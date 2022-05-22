@@ -1,0 +1,21 @@
+{
+  "name": "onedrive-api",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "description": "",
+  "scripts": {
+    "doc": "typedoc ./src/*.ts",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^17.0.35",
+    "tslib": "^2.4.0"
+  },
+  "dependencies": {
+    "cross-fetch": "^3.1.5"
+  }
+}

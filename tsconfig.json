@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "target": "esnext",
+        "module": "esnext",
+        "moduleResolution": "node",
+        "useUnknownInCatchVariables": false,
+        "strict": true,
+        "declaration": true,
+        "declarationDir": "dist",
+        "outDir": "dist",
+        "importHelpers": true,
+        "removeComments": true,
+        "experimentalDecorators": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "typeRoots": ["node_modules/@types", "src/types"]
+    },
+    "include": ["src"],
+    "exclude": ["node_modules", "lib"]
+}
