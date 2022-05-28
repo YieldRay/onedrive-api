@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "description": "",
   "scripts": {
-    "doc": "typedoc ./src/*.ts",
+    "doc": "typedoc src/main.ts src/helper.ts",
     "build": "tsc"
   },
   "keywords": [],
