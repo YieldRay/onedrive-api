@@ -15,42 +15,65 @@ class OnedriveAPI {
     #graphURL = "https://graph.microsoft.com/v1.0";
     #drive = "/me/drive";
     #maxDuration: number = 0; // 10s
+
+    /**
+     * fetch and if response is not ok, throw error
+     */
     async #fetch(url: string | Array<string>, options?: RequestInit): Promise<Response> {
         const ac = new AbortController();
         const signal = this.#maxDuration ? ac.signal : undefined;
         this.#maxDuration &&
             setTimeout(() => ac.abort(`fetch is aborted due to ${this.#maxDuration}ms has passed`), this.#maxDuration);
-        console.debug(composeURL(this.#graphURL, this.#drive, ...(Array.isArray(url) ? url : [url])));
-        return fetch(
-            //! keep in mind that every compose element except the first one should start with / but not end with /
-            composeURL(this.#graphURL, this.#drive, ...(Array.isArray(url) ? url : [url])),
-            Object.assign(
-                {
-                    headers: {
-                        Authorization: `Bearer ${this.#accessToken}`,
-                    },
-                    signal,
+        const apiEndpoint = composeURL(this.#graphURL, this.#drive, ...(Array.isArray(url) ? url : [url]));
+        console.debug(`fetching ${apiEndpoint}`); // ! DEBUG
+        const resp = await fetch(
+            // ? keep in mind that every compose element except the first one should start with / but not end with /
+            apiEndpoint,
+            Object.assign(options, {
+                headers: {
+                    Authorization: `Bearer ${this.#accessToken}`,
                 },
-                options
-            )
+                signal,
+            })
         );
+        if (resp.ok) return resp;
+        else throw new Error(`(${resp.status} ${resp.statusText})  API-ENDPOINT: ${apiEndpoint}`);
     }
 
     async #fetchJSON(url: string | Array<string>, options?: RequestInit): Promise<any> {
-        return this.#fetch(url, options).then((response) => {
-            if (response.ok) return response.json();
-            else throw new Error(`${response.status} ${response.statusText}`);
-        });
+        if (!options) options = {};
+        Object.assign(options, { headers: { accept: "application/json" } });
+        return this.#fetch(url, options).then((resp) => resp.json());
     }
 
     async #fetchOK(url: string | Array<string>, options?: RequestInit): Promise<boolean> {
-        return this.#fetch(url, options).then((response) => response.ok);
+        try {
+            await this.#fetch(url, options);
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
+    /**
+     * a fetch that have accessToken attached in headers
+     */
     async fetchAPI(input: RequestInfo, info?: RequestInit) {
-        return fetch(input, info).then((response) => response.json());
+        if (!info) info = {};
+        return fetch(
+            input,
+            Object.assign(info, {
+                headers: {
+                    Authorization: `Bearer ${this.#accessToken}`,
+                },
+            })
+        ).then((response) => response.json());
     }
 
+    /**
+     * initialize the API with accessToken
+     * @param accessToken
+     */
     constructor(accessToken: string) {
         this.#accessToken = accessToken;
     }
@@ -93,6 +116,9 @@ class OnedriveAPI {
         this.#accessToken = accessToken;
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_checkin
+     */
     async checkin(itemLocator: ItemLocator, comment: string): Promise<boolean> {
         return this.#fetchOK([locatorWrap(itemLocator), "/checkin"], {
             method: "POST",
@@ -100,10 +126,16 @@ class OnedriveAPI {
         });
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_checkout
+     */
     async checkout(itemLocator: ItemLocator): Promise<boolean> {
         return this.#fetchOK([locatorWrap(itemLocator), "/checkout"]);
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_copy
+     */
     async copy(
         itemLocator: ItemLocator,
         parentReference?: { driveId: string; id: string },
@@ -118,6 +150,9 @@ class OnedriveAPI {
         });
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_post_children
+     */
     async mkdir(parentItemId = "root", name: string): Promise<any> {
         return this.#fetchJSON(["/" + parentItemId, "/children"], {
             method: "POST",
@@ -129,6 +164,9 @@ class OnedriveAPI {
         });
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delete
+     */
     async delete(itemLocator: ItemLocator): Promise<boolean> {
         return this.#fetchOK(locatorWrap(itemLocator), {
             method: "DELETE",
@@ -146,18 +184,39 @@ class OnedriveAPI {
         range?: [start: number, end: number],
         appendix?: ODataAppendix
     ): Promise<string> {
-        return this.#fetch([locatorWrap(itemLocator), "/" + simpleOData(appendix)], {
+        return this.#fetch([locatorWrap(itemLocator), "/content" + simpleOData(appendix)], {
             method: "GET",
             headers: range
                 ? {
                       Range: `bytes=${range?.join("-")}`,
                   }
                 : {},
-        }).then((response) => response.url);
+        }).then((res) => res.url);
     }
 
+    /**
+     * Retrieve the metadata for a DriveItem in a Drive by file system path or ID.
+     * @param itemLocator bare string only if you know the API, otherwise use {path: "/path/to/file"} or {id: "id"}
+     * @param appendix pass OData query string, a string that starts with ?
+     * @param appendix pass an object and it will transform to correct OData query string
+     * @example
+     * item({path:"/path/to/file"}, {select:["name","size"]})
+     * item({path:"/path/to/file"}, "?select=name,size")
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get
+     */
     async item(itemLocator: ItemLocator, appendix?: ODataAppendix) {
         return this.#fetchJSON([locatorWrap(itemLocator), "/" + simpleOData(appendix)]);
+    }
+
+    /**
+     * ask the server whether the item is available
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get
+     */
+    async exist(itemLocator: ItemLocator): Promise<boolean> {
+        // TODO: this is buggy and always return false
+        return this.#fetchOK([locatorWrap(itemLocator), "/"], {
+            method: "HEAD",
+        });
     }
 
     /**
@@ -166,11 +225,15 @@ class OnedriveAPI {
      * @param itemLocator bare string only if you know the API, otherwise use {path: "/path/to/file"} or {id: "id"}
      * @param appendix ODataAppendix, like {select: "id,name,size,@microsoft.graph.downloadUrl"}
      * @example children("") // for root
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_children
      */
     async children(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<any> {
         return this.#fetchJSON([locatorWrap(itemLocator), "/children" + simpleOData(appendix)]);
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_move
+     */
     async move(itemLocator: ItemLocator, newParentFolderID: number, newItemName?: string): Promise<any> {
         return this.#fetchJSON([locatorWrap(itemLocator)], {
             method: "PATCH",
@@ -183,6 +246,9 @@ class OnedriveAPI {
         });
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_preview
+     */
     async preview(
         itemLocator: ItemLocator,
         options: {
@@ -199,14 +265,18 @@ class OnedriveAPI {
         });
     }
 
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_search
+     */
     async search(itemLocator: ItemLocator, searchText: string): Promise<any> {
         return this.#fetchJSON([locatorWrap(itemLocator), `/search(q='${searchText}`]);
     }
 
     /**
      * This method allows your app to track changes to a drive and its children over time.
-     * @example delta({path:""}, {token:"latest"})
-     * @example od.fetchAPI((await od.delta(...))["@odata.nextLink"]) // for next page
+     * @example
+     *  delta({path:""}, {token:"latest"})
+     *  od.fetchAPI((await od.delta(...))["@odata.nextLink"]) // for next page
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delta
      */
     async delta(
@@ -218,6 +288,7 @@ class OnedriveAPI {
 
     /**
      * recommend to use children({path:""}, {expand:"thumbnails"}) if possible
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_thumbnails
      */
     async thumbnails(itemLocator: ItemLocator, thumbId?: string, size?: string, appendix?: ODataAppendix) {
         if (thumbId && size) {
@@ -231,6 +302,10 @@ class OnedriveAPI {
         return this.#fetchJSON([locatorWrap(itemLocator), "/thumbnails" + simpleOData(appendix)]);
     }
 
+    /**
+     * rename a DriveItem resource
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_update
+     */
     async rename(itemLocator: ItemLocator, name: string): Promise<any> {
         return this.#fetchJSON([locatorWrap(itemLocator)], {
             method: "PATCH",
