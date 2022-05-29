@@ -14,10 +14,11 @@ class OnedriveAPI {
     #accessToken: string;
     #graphURL = "https://graph.microsoft.com/v1.0";
     #drive = "/me/drive";
-    #maxDuration: number = 0; // 10s
+    #maxDuration: number = 0; // <= 0 for unlimited
 
     /**
      * fetch and if response is not ok, throw error
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/concepts/errors to view errors
      */
     async #fetch(url: string | Array<string>, options?: RequestInit): Promise<Response> {
         const ac = new AbortController();
@@ -29,7 +30,7 @@ class OnedriveAPI {
         const resp = await fetch(
             // ? keep in mind that every compose element except the first one should start with / but not end with /
             apiEndpoint,
-            Object.assign(options, {
+            Object.assign(options || {}, {
                 headers: {
                     Authorization: `Bearer ${this.#accessToken}`,
                 },
@@ -37,7 +38,11 @@ class OnedriveAPI {
             })
         );
         if (resp.ok) return resp;
-        else throw new Error(`(${resp.status} ${resp.statusText})  API-ENDPOINT: ${apiEndpoint}`);
+        else throw new Error(`${resp.status} (${resp.statusText})  API-ENDPOINT: ${apiEndpoint}`);
+    }
+
+    async #fetchURL(url: string | Array<string>, options?: RequestInit): Promise<string> {
+        return this.#fetch(url, options).then((resp) => resp.url);
     }
 
     async #fetchJSON(url: string | Array<string>, options?: RequestInit): Promise<any> {
@@ -184,14 +189,14 @@ class OnedriveAPI {
         range?: [start: number, end: number],
         appendix?: ODataAppendix
     ): Promise<string> {
-        return this.#fetch([locatorWrap(itemLocator), "/content" + simpleOData(appendix)], {
+        return this.#fetchURL([locatorWrap(itemLocator), "/content" + simpleOData(appendix)], {
             method: "GET",
             headers: range
                 ? {
                       Range: `bytes=${range?.join("-")}`,
                   }
                 : {},
-        }).then((res) => res.url);
+        });
     }
 
     /**
@@ -206,17 +211,6 @@ class OnedriveAPI {
      */
     async item(itemLocator: ItemLocator, appendix?: ODataAppendix) {
         return this.#fetchJSON([locatorWrap(itemLocator), "/" + simpleOData(appendix)]);
-    }
-
-    /**
-     * ask the server whether the item is available
-     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get
-     */
-    async exist(itemLocator: ItemLocator): Promise<boolean> {
-        // TODO: this is buggy and always return false
-        return this.#fetchOK([locatorWrap(itemLocator), "/"], {
-            method: "HEAD",
-        });
     }
 
     /**
@@ -266,6 +260,7 @@ class OnedriveAPI {
     }
 
     /**
+     * Search the hierarchy of items for items matching a query. You can search within a folder hierarchy, a whole drive, or files shared with the current user.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_search
      */
     async search(itemLocator: ItemLocator, searchText: string): Promise<any> {
@@ -287,17 +282,27 @@ class OnedriveAPI {
     }
 
     /**
-     * recommend to use children({path:""}, {expand:"thumbnails"}) if possible
+     * Retrieve a collection of ThumbnailSet resources for a DriveItem resource.
+     * @example
+     * thumbnails({path:"图片"})
+     * thumbnails({path:"图片"}, "0", "small")
+     * thumbnails({path:"图片"}, "0", "small", "/content") // get binary data, unrecommended
+     * children({path:"图片"}, {$expand:"thumbnails"}) // a replacement for getting thumbnails
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_thumbnails
+     * @see ThumbnailSet https://docs.microsoft.com/onedrive/developer/rest-api/resources/thumbnailset
      */
     async thumbnails(itemLocator: ItemLocator, thumbId?: string, size?: string, appendix?: ODataAppendix) {
         if (thumbId && size) {
-            return this.#fetchJSON([
-                locatorWrap(itemLocator),
-                "/thumbnails/" + thumbId,
-                "/" + size,
-                appendix ? `?${simpleOData(appendix)}` : "",
-            ]);
+            const odata = simpleOData(appendix);
+            if (odata === "/content")
+                return this.#fetchURL([locatorWrap(itemLocator), "/thumbnails/" + thumbId, "/" + size, odata]);
+            else
+                return this.#fetchJSON([
+                    locatorWrap(itemLocator),
+                    "/thumbnails/" + thumbId,
+                    "/" + size,
+                    appendix ? `?${simpleOData(appendix)}` : "",
+                ]);
         }
         return this.#fetchJSON([locatorWrap(itemLocator), "/thumbnails" + simpleOData(appendix)]);
     }
