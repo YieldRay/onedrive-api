@@ -5,14 +5,13 @@ const pathWrapper = (path: string) => {
 };
 const idWrapper = (id: string) => `/items/${id}`;
 
-// only undefined will be ignored
-function composeURL(baseURL: string, ...parts: Array<string>): string {
-    return parts.reduce((acc, part) => {
-        if (part === undefined) return acc;
-        if (part.startsWith("/")) return acc + part;
-        return acc + "/" + part;
-    }, baseURL);
-}
+type ItemLocator = string | { path: string } | { id: string };
+const locatorWrap = (locator: ItemLocator): string => {
+    if (typeof locator === "string") return locator;
+    if ("path" in locator) return pathWrapper(locator.path);
+    if ("id" in locator) return idWrapper(locator.id);
+    throw new Error("Invalid item locator");
+};
 
 type ODataAppendix =
     | string
@@ -31,4 +30,5 @@ function simpleOData(appendix: ODataAppendix): string {
     return "?" + q.toString();
 }
 
-export { simpleOData, ODataAppendix, composeURL, pathWrapper, idWrapper };
+export { simpleOData, ODataAppendix };
+export { pathWrapper, idWrapper, locatorWrap, ItemLocator };

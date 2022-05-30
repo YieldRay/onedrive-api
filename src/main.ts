@@ -1,63 +1,8 @@
-import fetch from "cross-fetch";
-import { simpleOData, ODataAppendix, composeURL, pathWrapper, idWrapper } from "./helper.js";
+import { fetchData, fetchURL, fetchJSON, fetchOK, CONFIG } from "./fetch.js";
+import { simpleOData, ODataAppendix } from "./helper.js";
+import { pathWrapper, idWrapper, locatorWrap, ItemLocator } from "./helper.js";
+
 // view https://docs.microsoft.com/zh-cn/onedrive/developer/rest-api/ for details
-
-type ItemLocator = string | { path: string } | { id: string };
-const locatorWrap = (locator: ItemLocator): string => {
-    if (typeof locator === "string") return locator;
-    if ("path" in locator) return pathWrapper(locator.path);
-    if ("id" in locator) return idWrapper(locator.id);
-    throw new Error("Invalid item locator");
-};
-
-const CONFIG = {
-    graphURL: "https://graph.microsoft.com/v1.0",
-    accessToken: "",
-    maxDuration: 0, // <= 0 for unlimited
-    drive: "/me/drive",
-};
-
-//! fetch wrapper start
-
-async function fetchData(url: string | Array<string>, options?: RequestInit): Promise<Response> {
-    const ac = new AbortController();
-    const signal = CONFIG.maxDuration ? ac.signal : undefined;
-    CONFIG.maxDuration &&
-        setTimeout(() => ac.abort(`fetch is aborted due to ${CONFIG.maxDuration}ms has passed`), CONFIG.maxDuration);
-    const apiEndpoint = composeURL(CONFIG.graphURL, CONFIG.drive, ...(Array.isArray(url) ? url : [url]));
-    console.debug(`fetching ${apiEndpoint}`); // ! DEBUG
-    const resp = await fetch(
-        // ? keep in mind that every compose element except the first one should start with / but not end with /
-        apiEndpoint,
-        Object.assign(options || {}, {
-            headers: {
-                Authorization: `Bearer ${CONFIG.accessToken}`,
-            },
-            signal,
-        })
-    );
-    if (resp.ok) return resp;
-    else throw new Error(`${resp.status} (${resp.statusText})  API-ENDPOINT: ${apiEndpoint}`);
-}
-
-async function fetchURL(url: string | Array<string>, options?: RequestInit): Promise<string> {
-    return fetchData(url, options).then((resp) => resp.url);
-}
-
-async function fetchJSON(url: string | Array<string>, options?: RequestInit): Promise<any> {
-    if (!options) options = {};
-    Object.assign(options, { headers: { accept: "application/json" } });
-    return fetchData(url, options).then((resp) => resp.json());
-}
-
-async function fetchOK(url: string | Array<string>, options?: RequestInit): Promise<boolean> {
-    try {
-        await fetchData(url, options);
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
 
 //! API class start
 
@@ -176,6 +121,7 @@ class OnedriveAPI {
     }
 
     /**
+     * Delete a DriveItem by using its ID or path. Note that deleting items using this method will move the items to the recycle bin instead of permanently deleting the item.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delete
      */
     async delete(itemLocator: ItemLocator): Promise<boolean> {

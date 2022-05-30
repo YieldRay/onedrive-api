@@ -33,4 +33,13 @@ api.custom("/root", "children", undefined, {
         parentReference: { driveId: "12345abcde" },
     },
 });
+
+// when an error occur due to response code is not 2xx
+// you can handle the error like this
+api.delete({ path: "a-not-exist-file" }).catch((err) => {
+    const code = parseInt(err.message.slice(0, 3), 10);
+    if (code === 401) {
+        // access token is invalid or expired
+    }
+});
 ```
