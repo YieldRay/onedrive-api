@@ -1,3 +1,4 @@
+import fetch from "cross-fetch";
 import { fetchData, fetchURL, fetchJSON, fetchOK, CONFIG } from "./fetch.js";
 import { simpleOData, ODataAppendix } from "./helper.js";
 import { pathWrapper, idWrapper, locatorWrap, ItemLocator } from "./helper.js";
@@ -11,17 +12,13 @@ class OnedriveAPI {
      * a fetch that have accessToken attached in headers
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/concepts/errors to view errors
      */
-
     async fetchAPI(input: RequestInfo, info?: RequestInit) {
-        if (!info) info = {};
-        return fetch(
-            input,
-            Object.assign(info, {
-                headers: {
-                    Authorization: `Bearer ${CONFIG.accessToken}`,
-                },
-            })
-        ).then((response) => response.json());
+        return fetch(input, {
+            ...info,
+            headers: {
+                Authorization: `Bearer ${CONFIG.accessToken}`,
+            },
+        }).then((response) => response.json());
     }
 
     /**
@@ -73,6 +70,7 @@ class OnedriveAPI {
     //! API functions start
 
     /**
+     * Check-in a checked out DriveItem resource, which makes the version of the document available to others.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_checkin
      */
     async checkin(itemLocator: ItemLocator, comment: string): Promise<boolean> {
@@ -83,6 +81,7 @@ class OnedriveAPI {
     }
 
     /**
+     * Check-out a driveItem resource to prevent others from editing the document, and your changes from being visible until the documented is checked-in.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_checkout
      */
     async checkout(itemLocator: ItemLocator): Promise<boolean> {
@@ -90,6 +89,7 @@ class OnedriveAPI {
     }
 
     /**
+     * Asynchronously creates a copy of an driveItem (including any children), under a new parent item or with a new name.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_copy
      */
     async copy(
@@ -107,6 +107,7 @@ class OnedriveAPI {
     }
 
     /**
+     * Create a new folder or DriveItem in a Drive with a specified parent item or path.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_post_children
      */
     async mkdir(parentItemId = "root", name: string): Promise<any> {
@@ -183,6 +184,7 @@ class OnedriveAPI {
     }
 
     /**
+     * Move a DriveItem to a new folder
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_move
      */
     async move(itemLocator: ItemLocator, newParentFolderID: number, newItemName?: string): Promise<any> {
@@ -198,6 +200,7 @@ class OnedriveAPI {
     }
 
     /**
+     * This action allows you to obtain short-lived embeddable URLs for an item.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_preview
      */
     async preview(
@@ -278,50 +281,82 @@ class OnedriveAPI {
     }
 
     /**
-     * upload a file whose size is less than 4MB
-     * @param locator if pass { itemId: string }, the selected file will be overwritten
-     * @param locator if pass { filePath: string }, it should contain the file name, otherwise the file name will be the same as the file name
-     * @param locator if pass { parentId: string; filename?: string }, you need to specify the parent folder id
+     * Upload the contents of a DriveItem (less than 4MB)
+     * @param parentLocator pass an parentLocator for replacing the old file, e.g. {path:"/path/to/folder/"} where the path must end with a "/"
      * @param file if pass a File object assuming you are running in a browser or deno, you need to construct the File object yourself
      * @param file if pass a string, it should be the file path, only supported in node.js
+     * @param filename pass "" if you want to use the file name of the file
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_put_content
      */
-    async uploadSimple(
-        locator: { itemId: string } | { filePath: string } | { parentId: string; filename?: string }, // the first for overwrite, the other for upload
-        file: File | string // the front for browser, the rear for node
-    ): Promise<any> {
-        let q: string | undefined;
-        if ("itemId" in locator) {
-            q = idWrapper(locator.itemId);
-        } else if ("filePath" in locator) {
-            q = pathWrapper(locator.filePath);
-        }
-        // for browser/deno
-        if (file instanceof File) {
-            if ("parentId" in locator) {
-                q = idWrapper(locator.parentId) + `:${locator.filename || file.name}:`;
-            }
-            if (q === undefined) throw new Error("itemId or parentId or filename or filePath is required");
-            return fetchJSON([q + "/content"], {
+    async uploadSimple(parentLocator: ItemLocator, file: File | string, filename: string): Promise<any>;
+    /**
+     * Replace the contents of a DriveItem (less than 4MB)
+     * @param itemLocator pass an itemLocator for replacing the old file
+     * @param file if pass a File object assuming you are running in a browser or deno, you need to construct the File object yourself
+     * @param file if pass a string, it should be the file path, only supported in node.js
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_put_content
+     */
+    async uploadSimple(itemLocator: ItemLocator, file: File | string): Promise<any>;
+    async uploadSimple(locator: ItemLocator, file: File | string, filename?: string) {
+        if (typeof filename !== "string") {
+            // ! upload replace
+            let body: BodyInit;
+            if (file instanceof File) {
+                // for browser/deno
+                body = file;
+            } else if (typeof file === "string") {
+                // for node.js
+                const { createReadStream } = await import("node:fs");
+                body = createReadStream(file) as any as ReadableStream;
+            } else throw new Error("file must be a File or a string");
+            return fetchJSON([locatorWrap(locator) + "/content"], {
                 method: "PUT",
-                body: file,
+                body,
             });
-        }
-        // for node.js
-        if (typeof file === "string") {
-            const { createReadStream } = await import("node:fs");
-            const { basename } = await import("node:path");
-            if ("parentId" in locator) {
-                q = idWrapper(locator.parentId) + `:${locator.filename || basename(file)}:`;
-            }
-            if (q === undefined) throw new Error("itemId or parentId or filename or filePath is required");
-            return fetchJSON([q + "/content"], {
+        } else {
+            // ! upload new
+            let query: string;
+            let fileName: string;
+            let body: BodyInit;
+
+            if (file instanceof File) {
+                // for browser/deno
+                fileName = filename || file.name;
+                if (typeof locator === "string") query = locator;
+                else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
+                else if ("path" in locator) {
+                    if (!locator.path.endsWith("/")) throw new Error("A parent folder path must end with '/'");
+                    query = `/root:/${locator.path}${fileName}:/content`;
+                } else throw new Error("locator must be a string or an ItemLocator");
+
+                body = file;
+            } else if (typeof file === "string") {
+                // for node.js
+                const { createReadStream } = await import("node:fs");
+                const { basename } = await import("node:path");
+                fileName = filename || basename(file);
+
+                body = createReadStream(file) as any as ReadableStream;
+            } else throw new Error("file must be a File or a string");
+
+            if (typeof locator === "string") query = locator;
+            else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
+            else if ("path" in locator) {
+                if (!locator.path.endsWith("/")) throw new Error("A parent folder path must end with '/'");
+                query = `/root:/${locator.path}${fileName}:/content`;
+            } else throw new Error("locator must be a string or an ItemLocator");
+
+            return fetchJSON(query, {
                 method: "PUT",
-                body: createReadStream(file) as any as ReadableStream,
+                body,
             });
         }
     }
 
     // TODO
+    /**
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_createuploadsession
+     */
     async uploadSession() {}
 
     /**

@@ -24,7 +24,7 @@ async function fetchData(url: string | Array<string>, options?: RequestInit): Pr
     CONFIG.maxDuration &&
         setTimeout(() => ac.abort(`fetch is aborted due to ${CONFIG.maxDuration}ms has passed`), CONFIG.maxDuration);
     const apiEndpoint = composeURL(CONFIG.graphURL, CONFIG.drive, ...(Array.isArray(url) ? url : [url]));
-    console.debug(`fetching ${apiEndpoint}`); // ! DEBUG
+    console.debug(`fetching ${apiEndpoint}`); //! DEBUG
     const resp = await fetch(
         // ? keep in mind that every compose element except the first one should start with / but not end with /
         apiEndpoint,
@@ -36,7 +36,7 @@ async function fetchData(url: string | Array<string>, options?: RequestInit): Pr
         })
     );
     if (resp.ok) return resp;
-    else throw new Error(`${resp.status} (${resp.statusText})  API-ENDPOINT:${apiEndpoint}`);
+    else throw new Error(`${resp.status} (${resp.statusText})  API-ENDPOINT:${apiEndpoint}`); //! Main Error
 }
 
 async function fetchURL(url: string | Array<string>, options?: RequestInit): Promise<string> {

@@ -1,6 +1,6 @@
 // helper for dealing with item locate
 const pathWrapper = (path: string) => {
-    if (path === "") return "/root/";
+    if (path === "" || path === "/") return "/root/";
     return `/root:/${path}:`;
 };
 const idWrapper = (id: string) => `/items/${id}`;
@@ -10,7 +10,7 @@ const locatorWrap = (locator: ItemLocator): string => {
     if (typeof locator === "string") return locator;
     if ("path" in locator) return pathWrapper(locator.path);
     if ("id" in locator) return idWrapper(locator.id);
-    throw new Error("Invalid item locator");
+    throw new Error("Invalid item locator, must be string or {path} or {id}");
 };
 
 type ODataAppendix =
