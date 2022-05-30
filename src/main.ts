@@ -1,4 +1,6 @@
 import fetch from "cross-fetch";
+import { read } from "node:fs";
+import { off } from "node:process";
 import { fetchData, fetchURL, fetchJSON, fetchOK, CONFIG } from "./fetch.js";
 import { simpleOData, ODataAppendix } from "./helper.js";
 import { pathWrapper, idWrapper, locatorWrap, ItemLocator } from "./helper.js";
@@ -18,7 +20,7 @@ class OnedriveAPI {
             headers: {
                 Authorization: `Bearer ${CONFIG.accessToken}`,
             },
-        }).then((response) => response.json());
+        });
     }
 
     /**
@@ -231,7 +233,7 @@ class OnedriveAPI {
      * This method allows your app to track changes to a drive and its children over time.
      * @example
      *  delta({path:""}, {token:"latest"})
-     *  od.fetchAPI((await od.delta(...))["@odata.nextLink"]) // for next page
+     *  od.fetchAPI((await od.delta(...))["@odata.nextLink"]).then(res=>res.json()) // for next page
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delta
      */
     async delta(
@@ -332,7 +334,8 @@ class OnedriveAPI {
                 body = file;
             } else if (typeof file === "string") {
                 // for node.js
-                const { createReadStream } = await import("node:fs");
+                const { createReadStream, existsSync } = await import("node:fs");
+                if (!existsSync(file)) throw new Error("file does not exist");
                 const { basename } = await import("node:path");
                 fileName = filename || basename(file);
 
@@ -355,9 +358,74 @@ class OnedriveAPI {
 
     // TODO
     /**
+     * (Not implemented yet) currently only support node.js
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_createuploadsession
      */
-    async uploadSession() {}
+    uploadSession(itemLocator: ItemLocator, filepath: string) {
+        return new Promise<void>(async (resolve, reject) => {
+            const { uploadUrl, expirationDateTime } = (await fetchJSON([locatorWrap(itemLocator)])) as {
+                uploadUrl: string;
+                expirationDateTime: string;
+            };
+
+            const { open, read, statSync, existsSync } = await import("node:fs");
+            if (!existsSync(filepath)) throw new Error("file does not exist");
+            const { size } = statSync(filepath);
+            const chunkSize = 327680;
+            let buffer = Buffer.alloc(chunkSize);
+            let position = 0;
+            const sendChunk = async (buffer: Buffer) => {
+                // success 202 201 200 ...
+                const { status } = await fetch(uploadUrl, {
+                    method: "PUT",
+                    body: buffer,
+                    headers: {
+                        "Content-Length": buffer.length.toString(),
+                        "Content-Range": `bytes ${position}-${position + buffer.length - 1}/${size}`,
+                    },
+                });
+                return status;
+            };
+            open(filepath, "r", undefined, (err, fd) => {
+                if (err) reject(err);
+                const readNext = () =>
+                    read(fd, buffer, 0, chunkSize, position, async (err, bytesRead, buffer) => {
+                        if (err) reject(err);
+                        if (bytesRead === 0) {
+                            // end of file
+                            resolve();
+                        } else {
+                            // read next chunk
+                            let errorCount = 0;
+                            const sendThisChunk = async () => {
+                                const status = await sendChunk(buffer);
+                                if (status === 202) return;
+                                else if (status === 200 || status === 201) resolve();
+                                else if (Math.floor(status / 100) === 5) {
+                                    // Use an exponential back off strategy if any 5xx server errors are returned when resuming or retrying upload requests.
+                                    errorCount++;
+                                    if (errorCount > 5) {
+                                        // max 5 retries
+                                        reject(new Error("Too many errors"));
+                                    } else {
+                                        await new Promise(
+                                            (resolve) => setTimeout(resolve, Math.pow(2, errorCount) * 500) // 0.5s ** n
+                                        );
+                                        sendThisChunk(); // retry
+                                    }
+                                } else {
+                                    reject(new Error(`Unexpected status code: ${status}`));
+                                }
+                            };
+                            sendThisChunk();
+                            position += bytesRead;
+                            readNext();
+                        }
+                    });
+                readNext();
+            });
+        });
+    }
 
     /**
      * customize a request if not shipped by this library
