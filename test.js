@@ -14,6 +14,9 @@ od.setMaxDuration(5 * 1000);
 // od.thumbnails({ path: "图片" }).then(console.log);
 // od.thumbnails({ path: "图片" }, "0", "small").then(console.log);
 // od.thumbnails({ path: "图片" }, "0", "small", "/content").then(console.log);
+// od.uploadSimple({ path: "附件/" }, "./test.js", "test.js").then(console.log);
+// od.rename({ path: "附件/test.js" }, "tested.js").then(console.log);
+// od.delete({ path: "附件/tested.js" }).then(console.log);
 
 function refresh(refreshToken) {
     return fetch("https://onedrive.deno.dev/refresh?refresh_token=" + refreshToken)

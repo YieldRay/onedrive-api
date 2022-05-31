@@ -1,4 +1,5 @@
 import { open, read, statSync, existsSync } from "node:fs";
+import { promisify } from "node:util";
 import fetch from "cross-fetch";
 
 export default async function (uploadUrl: string, filepath: string) {
@@ -20,43 +21,45 @@ export default async function (uploadUrl: string, filepath: string) {
             });
             return status;
         };
-        open(filepath, "r", undefined, (err, fd) => {
-            if (err) reject(err);
-            const readNext = () =>
-                read(fd, buffer, 0, chunkSize, position, async (err, bytesRead, buffer) => {
-                    if (err) reject(err);
-                    if (bytesRead === 0) {
-                        // end of file
-                        resolve();
-                    } else {
-                        // read next chunk
-                        let errorCount = 0;
-                        const sendThisChunk = async () => {
-                            const status = await sendChunk(buffer);
-                            if (status === 202) return;
-                            else if (status === 200 || status === 201) resolve();
-                            else if (Math.floor(status / 100) === 5) {
-                                // Use an exponential back off strategy if any 5xx server errors are returned when resuming or retrying upload requests.
-                                errorCount++;
-                                if (errorCount > 5) {
-                                    // max 5 retries
-                                    reject(new Error("Too many errors"));
-                                } else {
-                                    await new Promise(
-                                        (resolve) => setTimeout(resolve, Math.pow(2, errorCount) * 500) // 0.5s ** n
-                                    );
-                                    sendThisChunk(); // retry
-                                }
+
+        const fd = await promisify(open)(filepath, "r", undefined);
+
+        const readNext = () =>
+            read(fd, buffer, 0, chunkSize, position, async (err, bytesRead, buffer) => {
+                if (err) reject(err);
+                if (bytesRead === 0) {
+                    // end of file
+                    resolve();
+                } else {
+                    // read next chunk
+                    let errorCount = 0;
+                    const sendThisChunk = async () => {
+                        const status = await sendChunk(buffer);
+                        if (status === 202) return;
+                        else if (status === 200 || status === 201) resolve();
+                        else if (Math.floor(status / 100) === 5) {
+                            // Use an exponential back off strategy if any 5xx server errors are returned when resuming or retrying upload requests.
+                            errorCount++;
+                            if (errorCount > 5) {
+                                // max 5 retries
+                                reject(new Error("Too many errors"));
                             } else {
-                                reject(new Error(`Unexpected status code: ${status}`));
+                                await new Promise(
+                                    (resolve) => setTimeout(resolve, Math.pow(2, errorCount) * 1000) // 1s * 2^n
+                                );
+                                sendThisChunk(); // retry
                             }
-                        };
-                        sendThisChunk();
-                        position += bytesRead;
-                        readNext();
-                    }
-                });
-            readNext();
-        });
+                        } else {
+                            reject(new Error(`Unexpected status code: ${status}`));
+                        }
+                    };
+                    // end sendThisChunk
+                    sendThisChunk();
+                    position += bytesRead;
+                    readNext();
+                }
+                // end readNext
+                readNext();
+            });
     });
 }

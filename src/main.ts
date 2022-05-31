@@ -309,14 +309,16 @@ class OnedriveAPI {
         if (typeof filename !== "string") {
             // ! upload replace
             let body: BodyInit;
-            if (file instanceof File) {
+            if (typeof File !== "undefined") {
                 // for browser/deno
+                if (!(file instanceof File)) throw new Error("file should be a File object");
                 body = file;
-            } else if (typeof file === "string") {
+            } else {
                 // for node.js
+                if (typeof file !== "string") throw new Error("file should be a string");
                 const { createReadStream } = await import("node:fs");
                 body = createReadStream(file) as any as ReadableStream;
-            } else throw new Error("file must be a File or a string");
+            }
             return fetchJSON([locatorWrap(locator) + "/content"], {
                 method: "PUT",
                 body,
@@ -327,8 +329,9 @@ class OnedriveAPI {
             let fileName: string;
             let body: BodyInit;
 
-            if (file instanceof File) {
+            if (typeof File !== "undefined") {
                 // for browser/deno
+                if (!(file instanceof File)) throw new Error("file should be a File object");
                 fileName = filename || file.name;
                 if (typeof locator === "string") query = locator;
                 else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
@@ -338,15 +341,16 @@ class OnedriveAPI {
                 } else throw new Error("locator must be a string or an ItemLocator");
 
                 body = file;
-            } else if (typeof file === "string") {
+            } else {
                 // for node.js
+                if (typeof file !== "string") throw new Error("file should be a string");
                 const { createReadStream, existsSync } = await import("node:fs");
                 if (!existsSync(file)) throw new Error("file does not exist");
                 const { basename } = await import("node:path");
                 fileName = filename || basename(file);
 
                 body = createReadStream(file) as any as ReadableStream;
-            } else throw new Error("file must be a File or a string");
+            }
 
             if (typeof locator === "string") query = locator;
             else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
@@ -380,9 +384,10 @@ class OnedriveAPI {
      * @param appendix the ODataAppendix or some suffix to the API
      * @param body the body of fetch
      * @param method the method of fetch
-     * @example custom({id}, "versions")
-     * @example custom({id}, "versions", "/{version-id}")
-     * @example custom({id}, "versions", "/{version-id}/restoreVersion", undefined, "POST")
+     * @example
+     *  custom({id}, "versions") // Listing versions of a DriveItem
+     *  custom({id}, "versions", "/{version-id}") // Get a DriveItemVersion resource
+     *  custom({id}, "versions", "/{version-id}/restoreVersion", undefined, "POST") // Restore a previous version of a DriveItem
      */
     async custom(itemLocator: ItemLocator, command: string, appendix?: ODataAppendix, body?: any, method?: string) {
         return fetchJSON([locatorWrap(itemLocator), "/" + command + simpleOData(appendix)], {

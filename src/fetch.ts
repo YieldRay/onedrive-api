@@ -46,6 +46,7 @@ async function fetchData(url: string | Array<string>, options?: RequestInit): Pr
         apiEndpoint,
         Object.assign(options || {}, {
             headers: {
+                ...(options && options.headers ? options.headers : {}),
                 Authorization: `Bearer ${CONFIG.accessToken}`,
             },
             signal,
@@ -75,9 +76,14 @@ async function fetchURL(url: string | Array<string>, options?: RequestInit): Pro
 }
 
 async function fetchJSON(url: string | Array<string>, options?: RequestInit): Promise<any> {
-    if (!options) options = {};
-    Object.assign(options, { headers: { accept: "application/json" } });
-    return fetchData(url, options).then((resp) => resp.json());
+    return fetchData(url, {
+        ...options,
+        headers: {
+            ...(options && options.headers ? options.headers : {}),
+            accept: "application/json",
+            "Content-Type": "application/json",
+        },
+    }).then((resp) => resp.json());
 }
 
 async function fetchOK(url: string | Array<string>, options?: RequestInit): Promise<boolean> {
