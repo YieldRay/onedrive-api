@@ -2,7 +2,8 @@ import fetch from "cross-fetch";
 import { fetchData, fetchURL, fetchJSON, fetchOK } from "./fetch.js";
 import { CONFIG, FETCH_DETAIL } from "./fetch.js";
 import { simpleOData, ODataAppendix } from "./helper.js";
-import { locatorWrap, ItemLocator } from "./helper.js";
+import { locatorWrap, pathWrapper, ItemLocator } from "./helper.js";
+import { RemoteItem, SingleRemoteItem } from "./types.js";
 
 // view https://docs.microsoft.com/zh-cn/onedrive/developer/rest-api/ for details
 
@@ -146,7 +147,7 @@ class OnedriveAPI {
      * @example
      * download({path:"/path/to/file"})
      * download({path:"/path/to/file"}, [0,1023]) // partial range downloads
-     * download({path:"/path/to/file"}, undefined, {format: "jpg"})
+     * download({path:"/path/to/file"}, undefined, {format: "jpg"}) // specify format
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get_content
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get_content_format
      */
@@ -175,7 +176,7 @@ class OnedriveAPI {
      * item({path:"/path/to/file"}, "?select=name,size")
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get
      */
-    async item(itemLocator: ItemLocator, appendix?: ODataAppendix) {
+    async item(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<SingleRemoteItem> {
         return fetchJSON([locatorWrap(itemLocator), "/" + simpleOData(appendix)]);
     }
 
@@ -187,22 +188,53 @@ class OnedriveAPI {
      * @example children("") // for root
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_children
      */
-    async children(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<any> {
+    async children(
+        itemLocator: ItemLocator,
+        appendix?: ODataAppendix
+    ): Promise<{ "@odata.context": string; "@odata.count": number; value: Array<RemoteItem> }> {
         return fetchJSON([locatorWrap(itemLocator), "/children" + simpleOData(appendix)]);
     }
 
     /**
      * Move a DriveItem to a new folder
+     * This is a special case of the Update method. Your app can combine moving an item to a new container and updating other properties of the item into a single request.
+     * Items cannot be moved between Drives using this request.
+     * @param parentLocator like parentReference, but is {path: "/path/to/file"} or {id: "id"}, string is not allowed
+     * @param newItemName optional, new name for the item, has the same effect as rename
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_move
      */
-    async move(itemLocator: ItemLocator, newParentFolderID: number, newItemName?: string): Promise<any> {
+    async move(
+        itemLocator: ItemLocator,
+        parentLocator?: Exclude<ItemLocator, string>,
+        newItemName?: string
+    ): Promise<SingleRemoteItem> {
+        if (!parentLocator && !newItemName) throw new Error("parentLocator or newItemName must be specified");
+
+        const id = parentLocator && "id" in parentLocator ? parentLocator.id : undefined;
+        const path = parentLocator && "path" in parentLocator ? parentLocator.path : undefined;
+
+        if (!id && !path) throw new Error("parentLocator must have id or path");
         return fetchJSON([locatorWrap(itemLocator)], {
             method: "PATCH",
             body: JSON.stringify({
                 parentReference: {
-                    id: newParentFolderID,
+                    id,
+                    path: path ? "/drive" + pathWrapper(path) : undefined,
                 },
                 name: newItemName,
+            }),
+        });
+    }
+
+    /**
+     * A shortcut for renaming a DriveItem resource
+     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_update
+     */
+    async rename(itemLocator: ItemLocator, name: string): Promise<SingleRemoteItem> {
+        return fetchJSON([locatorWrap(itemLocator)], {
+            method: "PATCH",
+            body: JSON.stringify({
+                name,
             }),
         });
     }
@@ -231,8 +263,15 @@ class OnedriveAPI {
      * Search the hierarchy of items for items matching a query. You can search within a folder hierarchy, a whole drive, or files shared with the current user.
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_search
      */
-    async search(itemLocator: ItemLocator, searchText: string): Promise<any> {
-        return fetchJSON([locatorWrap(itemLocator), `/search(q='${searchText}`]);
+    async search(
+        itemLocator: ItemLocator,
+        searchText: string
+    ): Promise<{
+        "@odata.context": string;
+        value: Array<RemoteItem & { readonly "@odata.type": string; readonly searchResult: any }>;
+        "@odata.nextLink"?: string;
+    }> {
+        return fetchJSON([locatorWrap(itemLocator), `/search(q='${searchText}')`]);
     }
 
     /**
@@ -276,19 +315,6 @@ class OnedriveAPI {
     }
 
     /**
-     * rename a DriveItem resource
-     * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_update
-     */
-    async rename(itemLocator: ItemLocator, name: string): Promise<any> {
-        return fetchJSON([locatorWrap(itemLocator)], {
-            method: "PATCH",
-            body: JSON.stringify({
-                name,
-            }),
-        });
-    }
-
-    /**
      * Upload the contents of a DriveItem (less than 4MB)
      * @param parentLocator pass an parentLocator for replacing the old file, e.g. {path:"/path/to/folder/"} where the path must end with a "/"
      * @param file if pass a File object assuming you are running in a browser or deno, you need to construct the File object yourself
@@ -296,7 +322,7 @@ class OnedriveAPI {
      * @param filename pass "" if you want to use the file name of the file
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_put_content
      */
-    async uploadSimple(parentLocator: ItemLocator, file: File | string, filename: string): Promise<any>;
+    async uploadSimple(parentLocator: ItemLocator, file: File | string, filename: string): Promise<SingleRemoteItem>;
     /**
      * Replace the contents of a DriveItem (less than 4MB)
      * @param itemLocator pass an itemLocator for replacing the old file
@@ -304,8 +330,8 @@ class OnedriveAPI {
      * @param file if pass a string, it should be the file path, only supported in node.js
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_put_content
      */
-    async uploadSimple(itemLocator: ItemLocator, file: File | string): Promise<any>;
-    async uploadSimple(locator: ItemLocator, file: File | string, filename?: string) {
+    async uploadSimple(itemLocator: ItemLocator, file: File | string): Promise<SingleRemoteItem>;
+    async uploadSimple(locator: ItemLocator, file: File | string, filename?: string): Promise<SingleRemoteItem> {
         if (typeof filename !== "string") {
             // ! upload replace
             let body: BodyInit;
