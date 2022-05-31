@@ -34,11 +34,12 @@ api.custom("/root", "children", undefined, {
     },
 });
 
+// as the Error thrown by the api can not provide detailed info, and is hard to known what happend
 // when an error occur due to response code is not 2xx
 // you can handle the error like this
 api.delete({ path: "a-not-exist-file" }).catch((err) => {
-    const code = parseInt(err.message.slice(0, 3), 10);
-    if (code === 401) {
+    const { status, error, endPoint } = api.detailFetch;
+    if (status === 401) {
         // access token is invalid or expired
     }
 });

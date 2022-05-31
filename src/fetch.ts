@@ -16,17 +16,33 @@ const CONFIG = {
     drive: "/me/drive",
 };
 
+const FETCH_DETAIL: {
+    status: number;
+    endPoint: string;
+    error?: {
+        code: string;
+        message: string;
+        innererror: {
+            code: string;
+        };
+    };
+} = {
+    status: 0,
+    endPoint: "",
+};
+
 //! fetch wrapper
 
 async function fetchData(url: string | Array<string>, options?: RequestInit): Promise<Response> {
     const ac = new AbortController();
     const signal = CONFIG.maxDuration ? ac.signal : undefined;
-    CONFIG.maxDuration &&
+    if (CONFIG.maxDuration > 0)
         setTimeout(() => ac.abort(`fetch is aborted due to ${CONFIG.maxDuration}ms has passed`), CONFIG.maxDuration);
+
+    // ? keep in mind that every compose element except the first one should start with / but not end with /
     const apiEndpoint = composeURL(CONFIG.graphURL, CONFIG.drive, ...(Array.isArray(url) ? url : [url]));
-    console.debug(`fetching ${apiEndpoint}`); //! DEBUG
+
     const resp = await fetch(
-        // ? keep in mind that every compose element except the first one should start with / but not end with /
         apiEndpoint,
         Object.assign(options || {}, {
             headers: {
@@ -35,8 +51,23 @@ async function fetchData(url: string | Array<string>, options?: RequestInit): Pr
             signal,
         })
     );
+
+    // store fetch details
+    FETCH_DETAIL.status = resp.status;
+    FETCH_DETAIL.endPoint = apiEndpoint;
+
     if (resp.ok) return resp;
-    else throw new Error(`${resp.status} (${resp.statusText})  API-ENDPOINT:${apiEndpoint}`); //! Main Error
+    else {
+        try {
+            FETCH_DETAIL.error = await resp.json();
+        } catch (e) {}
+        throw new Error(
+            `${resp.status} (${resp.statusText})\n` +
+                `API-ENDPOINT: ${apiEndpoint}\n` +
+                `Check the fetchDetail property in api instantiate for more detailed info`
+        );
+        // ! FETCH_DETAIL should attached to the instantiate of the api
+    }
 }
 
 async function fetchURL(url: string | Array<string>, options?: RequestInit): Promise<string> {
@@ -58,4 +89,5 @@ async function fetchOK(url: string | Array<string>, options?: RequestInit): Prom
     }
 }
 
-export { fetchData, fetchURL, fetchJSON, fetchOK, CONFIG };
+export { fetchData, fetchURL, fetchJSON, fetchOK };
+export { CONFIG, FETCH_DETAIL };

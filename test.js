@@ -7,7 +7,10 @@ const od = new OnedriveAPI(access_token);
 od.setMaxDuration(5 * 1000);
 // od.children({ path: "文档" }).then(console.log);
 // od.item({ path: "文档/OneDrive 入门.pdf" }).then(console.log);
-// od.download({ path: "文档/OneDrive 入门.pdf" }).then(console.log);
+// od.download({ path: "文档/OneDrive 入门.pdf" }).then((downloadUrl) => {
+//     console.log(downloadUrl);
+//     console.log(od.detailFetch);
+// });
 // od.thumbnails({ path: "图片" }).then(console.log);
 // od.thumbnails({ path: "图片" }, "0", "small").then(console.log);
 // od.thumbnails({ path: "图片" }, "0", "small", "/content").then(console.log);
