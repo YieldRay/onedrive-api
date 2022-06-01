@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "description": "",
   "scripts": {
-    "doc": "typedoc src/main.ts src/helper.ts",
+    "doc": "typedoc src/main.ts src/helper.ts src/types.ts src/fetch.ts",
     "build": "tsc"
   },
   "keywords": [],
@@ -13,7 +13,8 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^17.0.35",
-    "tslib": "^2.4.0"
+    "tslib": "^2.4.0",
+    "typedoc": "^0.22.17"
   },
   "dependencies": {
     "cross-fetch": "^3.1.5"

@@ -37,10 +37,13 @@ api.custom("/root", "children", undefined, {
 // as the Error thrown by the api can not provide detailed info, and is hard to known what happend
 // when an error occur due to response code is not 2xx
 // you can handle the error like this
-api.delete({ path: "a-not-exist-file" }).catch((err) => {
-    const { status, error, endpoint } = api.detailFetch;
-    if (status === 401) {
+api.download({ path: "path/to/file" }).catch((err) => {
+    const { status, error, endpoint, headers } = api.detailFetch;
+    if (status === 401 || error.code === "InvalidAuthenticationToken") {
         // access token is invalid or expired
+        console.log(error.message);
     }
+    const diagnostic = JSON.parse(headers.get("x-ms-ags-diagnostic"));
+    console.log(diagnostic);
 });
 ```

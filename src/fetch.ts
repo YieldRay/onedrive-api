@@ -1,4 +1,4 @@
-import fetch from "cross-fetch";
+import fetch, { Headers } from "cross-fetch";
 
 // only undefined will be ignored
 function composeURL(baseURL: string, ...parts: Array<string>): string {
@@ -18,7 +18,9 @@ const CONFIG = {
 
 const FETCH_DETAIL: {
     status: number;
+    statusText: string;
     endpoint: string;
+    headers: Headers;
     error?: {
         code: string;
         message: string;
@@ -28,7 +30,9 @@ const FETCH_DETAIL: {
     };
 } = {
     status: 0,
+    statusText: "",
     endpoint: "",
+    headers: new Headers(),
 };
 
 //! fetch wrapper
@@ -53,15 +57,17 @@ async function fetchData(url: string | Array<string>, options?: RequestInit): Pr
     );
 
     // store fetch details
-    FETCH_DETAIL.status = resp.status;
     FETCH_DETAIL.endpoint = apiEndpoint;
+    FETCH_DETAIL.status = resp.status;
+    FETCH_DETAIL.statusText = resp.statusText;
+    FETCH_DETAIL.headers = new Headers(resp.headers);
 
     if (resp.ok) return resp;
     else {
         try {
             FETCH_DETAIL.error = await resp.json();
         } catch (e) {}
-        throw new Error(`${resp.status} (${resp.statusText})\n` + `API-ENDPOINT: ${apiEndpoint}\n` + `Check the fetchDetail property in api instantiate for more detailed info`);
+        throw new Error(`${resp.status} (${resp.statusText})\n` + `API-ENDPOINT: ${apiEndpoint}\n` + JSON.stringify(FETCH_DETAIL.error, null, 2));
         // ! FETCH_DETAIL should attached to the instantiate of the api
     }
 }
@@ -84,7 +90,7 @@ async function fetchJSON(url: string | Array<string>, options?: RequestInit): Pr
         ...options,
         headers: {
             ...(options && options.headers ? options.headers : {}),
-            accept: "application/json",
+            Accept: "application/json",
             "Content-Type": "application/json",
         },
     }).then((resp) => resp.json());
