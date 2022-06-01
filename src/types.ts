@@ -21,14 +21,7 @@ type RemoteItem = Readonly<{
     folder: {
         childCount: number;
         view: {
-            sortBy:
-                | "default"
-                | "name"
-                | "type"
-                | "size"
-                | "takenOrCreatedDateTime"
-                | "lastModifiedDateTime"
-                | "sequence";
+            sortBy: "default" | "name" | "type" | "size" | "takenOrCreatedDateTime" | "lastModifiedDateTime" | "sequence";
             sortOrder: "ascending" | "descending";
             viewType: "default" | "icons" | "details" | "thumbnails";
         };
@@ -86,11 +79,11 @@ interface ItemReference {
 }
 
 interface Thumbnail {
+    width: number;
     height: number;
     sourceItemId: string;
     url: string;
-    width: 1024;
-    content: any; // stream
+    // content: any; // stream
 }
 interface ThumbnailSet {
     id: string;
@@ -113,4 +106,4 @@ interface IdentitySet {
     user: Identity;
 }
 
-export { RemoteItem, SingleRemoteItem };
+export { RemoteItem, SingleRemoteItem, Thumbnail, ThumbnailSet };

@@ -18,7 +18,7 @@ const CONFIG = {
 
 const FETCH_DETAIL: {
     status: number;
-    endPoint: string;
+    endpoint: string;
     error?: {
         code: string;
         message: string;
@@ -28,7 +28,7 @@ const FETCH_DETAIL: {
     };
 } = {
     status: 0,
-    endPoint: "",
+    endpoint: "",
 };
 
 //! fetch wrapper
@@ -36,8 +36,7 @@ const FETCH_DETAIL: {
 async function fetchData(url: string | Array<string>, options?: RequestInit): Promise<Response> {
     const ac = new AbortController();
     const signal = CONFIG.maxDuration ? ac.signal : undefined;
-    if (CONFIG.maxDuration > 0)
-        setTimeout(() => ac.abort(`fetch is aborted due to ${CONFIG.maxDuration}ms has passed`), CONFIG.maxDuration);
+    if (CONFIG.maxDuration > 0) setTimeout(() => ac.abort(`fetch is aborted due to ${CONFIG.maxDuration}ms has passed`), CONFIG.maxDuration);
 
     // ? keep in mind that every compose element except the first one should start with / but not end with /
     const apiEndpoint = composeURL(CONFIG.graphURL, CONFIG.drive, ...(Array.isArray(url) ? url : [url]));
@@ -55,24 +54,29 @@ async function fetchData(url: string | Array<string>, options?: RequestInit): Pr
 
     // store fetch details
     FETCH_DETAIL.status = resp.status;
-    FETCH_DETAIL.endPoint = apiEndpoint;
+    FETCH_DETAIL.endpoint = apiEndpoint;
 
     if (resp.ok) return resp;
     else {
         try {
             FETCH_DETAIL.error = await resp.json();
         } catch (e) {}
-        throw new Error(
-            `${resp.status} (${resp.statusText})\n` +
-                `API-ENDPOINT: ${apiEndpoint}\n` +
-                `Check the fetchDetail property in api instantiate for more detailed info`
-        );
+        throw new Error(`${resp.status} (${resp.statusText})\n` + `API-ENDPOINT: ${apiEndpoint}\n` + `Check the fetchDetail property in api instantiate for more detailed info`);
         // ! FETCH_DETAIL should attached to the instantiate of the api
     }
 }
 
 async function fetchURL(url: string | Array<string>, options?: RequestInit): Promise<string> {
-    return fetchData(url, options).then((resp) => resp.url);
+    return fetchData(url, {
+        ...options,
+        headers: {
+            ...(options && options.headers ? options.headers : {}),
+            "Content-Type": "application/json",
+        },
+    }).then((resp) => {
+        const { headers } = resp;
+        return headers.get("Location") || resp.url;
+    });
 }
 
 async function fetchJSON(url: string | Array<string>, options?: RequestInit): Promise<any> {

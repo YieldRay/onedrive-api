@@ -3,7 +3,7 @@ import { fetchData, fetchURL, fetchJSON, fetchOK } from "./fetch.js";
 import { CONFIG, FETCH_DETAIL } from "./fetch.js";
 import { simpleOData, ODataAppendix } from "./helper.js";
 import { locatorWrap, pathWrapper, ItemLocator } from "./helper.js";
-import { RemoteItem, SingleRemoteItem } from "./types.js";
+import { RemoteItem, SingleRemoteItem, Thumbnail, ThumbnailSet } from "./types.js";
 
 // view https://docs.microsoft.com/zh-cn/onedrive/developer/rest-api/ for details
 
@@ -44,8 +44,7 @@ class OnedriveAPI {
      * @param id
      */
     setDrive(type: "me" | "drives" | "groups" | "sites" | "users" | "approot", id?: string) {
-        if (!type || !["me", "drives", "groups", "sites", "users", "approot"].includes(type))
-            throw new Error("type must be one of me, drive, drives, groups, sites, users, approot");
+        if (!type || !["me", "drives", "groups", "sites", "users", "approot"].includes(type)) throw new Error("type must be one of me, drive, drives, groups, sites, users, approot");
 
         switch (type) {
             case "me":
@@ -98,34 +97,51 @@ class OnedriveAPI {
     }
 
     /**
-     * Asynchronously creates a copy of an driveItem (including any children), under a new parent item or with a new name.
+     * (Only return monitor url) Asynchronously creates a copy of an driveItem (including any children), under a new parent item or with a new name.
+     * @example
+     * const monitorUrl = await copy({ path: "path/to/file" }, { path: "path/to/folder" });
+     * const copyResult = await monitorCopy(monitorUrl);
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_copy
      */
-    async copy(
-        itemLocator: ItemLocator,
-        parentReference?: { driveId: string; id: string },
-        name?: string
-    ): Promise<any> {
-        return fetchJSON([locatorWrap(itemLocator), "/copy"], {
+    async copy(itemLocator: ItemLocator, parentLocator: Exclude<ItemLocator, string>, name?: string): Promise<string> {
+        const id = parentLocator && "id" in parentLocator ? parentLocator.id : undefined;
+        const path = parentLocator && "path" in parentLocator ? parentLocator.path : undefined;
+
+        if (!id && !path) throw new Error("parentLocator must have id or path");
+
+        return fetchURL([locatorWrap(itemLocator), "/copy"], {
             method: "POST",
             body: JSON.stringify({
-                parentReference,
+                parentReference: {
+                    id,
+                    path: path ? "/drive" + pathWrapper(path) : undefined,
+                },
                 name,
             }),
         });
     }
 
+    async monitorCopy(
+        monitorUrl: string
+    ): Promise<{ resourceId?: string; operation: string; status: "completed" | "inProgress" | "failed" | "notStarted"; percentageComplete?: number; errorCode?: string; statusDescription: string }> {
+        return fetch(monitorUrl).then((res) => res.json());
+    }
+
     /**
      * Create a new folder or DriveItem in a Drive with a specified parent item or path.
+     * @param parentLocator the parent id or path of the new folder
+     * @param name the name of the new folder
+     * @param renameIfExist if true, the folder will be renamed if the name already exists, otherwise it will throw an error
+     * @example createFolder({path:"path/to/folder"}, "New Folder", true)
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_post_children
      */
-    async mkdir(parentItemId = "root", name: string): Promise<any> {
-        return fetchJSON(["/" + parentItemId, "/children"], {
+    async mkdir(parentLocator: ItemLocator, name: string, renameIfExist = false): Promise<SingleRemoteItem> {
+        return fetchJSON([locatorWrap(parentLocator), "/children"], {
             method: "POST",
             body: JSON.stringify({
                 name,
                 folder: {},
-                "@microsoft.graph.conflictBehavior": "rename", // this is for mkdir
+                "@microsoft.graph.conflictBehavior": renameIfExist ? "rename" : undefined,
             }),
         });
     }
@@ -141,28 +157,17 @@ class OnedriveAPI {
     }
 
     /**
-     * Download the contents of the primary stream (file) of a DriveItem. Only driveItems with the file property can be downloaded.
-     * @param range the range of the file to download, default is the whole file
+     * (Only return downloadUrl) Download the contents of the primary stream (file) of a DriveItem. Only driveItems with the file property can be downloaded.
      * @returns Pre-authenticated download URL which is only valid for a short period of time (a few minutes) and do not require an Authorization header to download.
      * @example
      * download({path:"/path/to/file"})
-     * download({path:"/path/to/file"}, [0,1023]) // partial range downloads
-     * download({path:"/path/to/file"}, undefined, {format: "jpg"}) // specify format
+     * download({path:"/path/to/file"}, {format: "jpg"}) // specify format
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get_content
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get_content_format
      */
-    async download(
-        itemLocator: ItemLocator,
-        range?: [start: number, end: number],
-        appendix?: ODataAppendix
-    ): Promise<string> {
+    async download(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<string> {
         return fetchURL([locatorWrap(itemLocator), "/content" + simpleOData(appendix)], {
             method: "GET",
-            headers: range
-                ? {
-                      Range: `bytes=${range?.join("-")}`,
-                  }
-                : {},
         });
     }
 
@@ -188,10 +193,7 @@ class OnedriveAPI {
      * @example children("") // for root
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_children
      */
-    async children(
-        itemLocator: ItemLocator,
-        appendix?: ODataAppendix
-    ): Promise<{ "@odata.context": string; "@odata.count": number; value: Array<RemoteItem> }> {
+    async children(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<{ "@odata.context": string; "@odata.count": number; value: Array<RemoteItem> }> {
         return fetchJSON([locatorWrap(itemLocator), "/children" + simpleOData(appendix)]);
     }
 
@@ -203,11 +205,7 @@ class OnedriveAPI {
      * @param newItemName optional, new name for the item, has the same effect as rename
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_move
      */
-    async move(
-        itemLocator: ItemLocator,
-        parentLocator?: Exclude<ItemLocator, string>,
-        newItemName?: string
-    ): Promise<SingleRemoteItem> {
+    async move(itemLocator: ItemLocator, parentLocator?: Exclude<ItemLocator, string>, newItemName?: string): Promise<SingleRemoteItem> {
         if (!parentLocator && !newItemName) throw new Error("parentLocator or newItemName must be specified");
 
         const id = parentLocator && "id" in parentLocator ? parentLocator.id : undefined;
@@ -281,10 +279,7 @@ class OnedriveAPI {
      *  od.fetchAPI((await od.delta(...))["@odata.nextLink"]).then(res=>res.json()) // for next page
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delta
      */
-    async delta(
-        itemLocator: ItemLocator,
-        appendix?: ODataAppendix
-    ): Promise<{ value: any[]; "@odata.nextLink"?: string }> {
+    async delta(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<{ value: any[]; "@odata.nextLink"?: string }> {
         return fetchJSON([locatorWrap(itemLocator), "/delta" + simpleOData(appendix)]);
     }
 
@@ -292,24 +287,19 @@ class OnedriveAPI {
      * Retrieve a collection of ThumbnailSet resources for a DriveItem resource.
      * @example
      * thumbnails({path:"图片"})
-     * thumbnails({path:"图片"}, "0", "small")
-     * thumbnails({path:"图片"}, "0", "small", "/content") // get binary data, unrecommended
+     * thumbnails({path:"图片"}, "0", "small | medium | large")
+     * thumbnails({path:"图片"}, "0", "small", "/content") // get downloadUrl
      * children({path:"图片"}, {$expand:"thumbnails"}) // a replacement for getting thumbnails
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_thumbnails
      * @see ThumbnailSet https://docs.microsoft.com/onedrive/developer/rest-api/resources/thumbnailset
      */
+    async thumbnails(itemLocator: ItemLocator, thumbId: undefined, size: undefined, appendix?: ODataAppendix): Promise<{ "@odata.context": string; value: ThumbnailSet }>;
+    async thumbnails(itemLocator: ItemLocator, thumbId: string, size: string, appendix?: ODataAppendix): Promise<Thumbnail & { "@odata.context": string }>;
+    async thumbnails(itemLocator: ItemLocator, thumbId: string, size: string, appendix: "/content"): Promise<string>;
     async thumbnails(itemLocator: ItemLocator, thumbId?: string, size?: string, appendix?: ODataAppendix) {
         if (thumbId && size) {
             const odata = simpleOData(appendix);
-            if (odata === "/content")
-                return fetchURL([locatorWrap(itemLocator), "/thumbnails/" + thumbId, "/" + size, odata]);
-            else
-                return fetchJSON([
-                    locatorWrap(itemLocator),
-                    "/thumbnails/" + thumbId,
-                    "/" + size,
-                    appendix ? `?${simpleOData(appendix)}` : "",
-                ]);
+            return (odata === "/content" ? fetchURL : fetchJSON)([locatorWrap(itemLocator), "/thumbnails/" + thumbId, "/" + size, odata]);
         }
         return fetchJSON([locatorWrap(itemLocator), "/thumbnails" + simpleOData(appendix)]);
     }
