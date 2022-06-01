@@ -120,7 +120,7 @@ class OnedriveAPI {
      * @param parentLocator the parent id or path of the new folder
      * @param name the name of the new folder
      * @param renameIfExist if true, the folder will be renamed if the name already exists, otherwise it will throw an error
-     * @example createFolder({path:"path/to/folder"}, "New Folder", true)
+     * @example createFolder({ path: "path/to/folder" }, "New Folder", true);
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_post_children
      */
     async mkdir(parentLocator: ItemLocator, name: string, renameIfExist = false): Promise<SingleRemoteItem> {
@@ -136,6 +136,7 @@ class OnedriveAPI {
 
     /**
      * Delete a DriveItem by using its ID or path. Note that deleting items using this method will move the items to the recycle bin instead of permanently deleting the item.
+     * @example delete({ path: "path/to/file" });
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delete
      */
     async delete(itemLocator: ItemLocator): Promise<boolean> {
@@ -148,8 +149,8 @@ class OnedriveAPI {
      * (Only return downloadUrl) Download the contents of the primary stream (file) of a DriveItem. Only driveItems with the file property can be downloaded.
      * @returns Pre-authenticated download URL which is only valid for a short period of time (a few minutes) and do not require an Authorization header to download.
      * @example
-     * download({path:"/path/to/file"})
-     * download({path:"/path/to/file"}, {format: "jpg"}) // specify format
+     * download({path:"/path/to/file"});
+     * download({path:"/path/to/file"}, {format: "jpg"}); // specify format
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get_content
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get_content_format
      */
@@ -164,8 +165,8 @@ class OnedriveAPI {
      * @param itemLocator bare string only if you know the API, otherwise use {path: "/path/to/file"} or {id: "id"}
      * @param appendix pass OData query string, a string that starts with '?' (OR) pass an object and it will transform to correct OData query string
      * @example
-     * item({path:"/path/to/file"}, {select:["name","size"]})
-     * item({path:"/path/to/file"}, "?select=name,size")
+     * item({ path: "/path/to/file" }, { select: ["name","size"] });
+     * item({ path: "/path/to/file" }, "?select=name,size");
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_get
      */
     async item(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<SingleRemoteItem> {
@@ -177,7 +178,7 @@ class OnedriveAPI {
      * DriveItems with a non-null folder or package facet can have one or more child DriveItems.
      * @param itemLocator bare string only if you know the API, otherwise use {path: "/path/to/file"} or {id: "id"}
      * @param appendix ODataAppendix, like {select: "id,name,size,@microsoft.graph.downloadUrl"}
-     * @example children("") // for root
+     * @example children(""); children("/"); // both is for root
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_children
      */
     async children(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<{ "@odata.context": string; "@odata.count": number; value: Array<RemoteItem> }> {
@@ -190,6 +191,7 @@ class OnedriveAPI {
      * Items cannot be moved between Drives using this request.
      * @param parentLocator like parentReference, but is {path: "/path/to/file"} or {id: "id"}, string is not allowed
      * @param newItemName optional, new name for the item, has the same effect as rename
+     * @example move({ path: "path/to/file" }, { path: "path/to/folder" });
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_move
      */
     async move(itemLocator: ItemLocator, parentLocator?: Exclude<ItemLocator, string>, newItemName?: string): Promise<SingleRemoteItem> {
@@ -262,8 +264,9 @@ class OnedriveAPI {
     /**
      * This method allows your app to track changes to a drive and its children over time.
      * @example
-     *  delta({path:""}, {token:"latest"})
-     *  od.fetchAPI((await od.delta(...))["@odata.nextLink"]).then(res=>res.json()) // for next page
+     *  delta({ path: "" }, { token: "latest" });
+     *  delta({ id: "123456789ABC" }, { token: "latest" });
+     *  od.fetchAPI((await od.delta(...))["@odata.nextLink"]).then(res=>res.json()); // for next page
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_delta
      */
     async delta(itemLocator: ItemLocator, appendix?: ODataAppendix): Promise<{ value: any[]; "@odata.nextLink"?: string }> {
@@ -273,10 +276,10 @@ class OnedriveAPI {
     /**
      * Retrieve a collection of ThumbnailSet resources for a DriveItem resource.
      * @example
-     * thumbnails({path:"图片"})
-     * thumbnails({path:"图片"}, "0", "small | medium | large")
-     * thumbnails({path:"图片"}, "0", "small", "/content") // get downloadUrl
-     * children({path:"图片"}, {$expand:"thumbnails"}) // a replacement for getting thumbnails
+     * thumbnails({ path:"图片" });
+     * thumbnails({ path:"图片" }, "0", "small | medium | large");
+     * thumbnails({ path:"图片" }, "0", "small", "/content"); // get downloadUrl
+     * children({ path:"图片" }, { $expand:"thumbnails" }); // a replacement for getting thumbnails
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_list_thumbnails
      * @see ThumbnailSet https://docs.microsoft.com/onedrive/developer/rest-api/resources/thumbnailset
      */
@@ -385,9 +388,9 @@ class OnedriveAPI {
      * @param body the body of fetch, if method is not specified, it will set to "POST"
      * @param method the method of fetch
      * @example
-     *  custom({id}, "versions") // Listing versions of a DriveItem
-     *  custom({id}, "versions", "/{version-id}") // Get a DriveItemVersion resource
-     *  custom({id}, "versions", "/{version-id}/restoreVersion", undefined, "POST") // Restore a previous version of a DriveItem
+     *  custom({id}, "versions"); // Listing versions of a DriveItem
+     *  custom({id}, "versions", "/{version-id}"); // Get a DriveItemVersion resource
+     *  custom({id}, "versions", "/{version-id}/restoreVersion", undefined, "POST"); // Restore a previous version of a DriveItem
      */
     async custom(itemLocator: ItemLocator, command: string, appendix?: ODataAppendix, body?: any, method?: string) {
         return fetchJSON([locatorWrap(itemLocator), "/" + command + simpleOData(appendix)], {

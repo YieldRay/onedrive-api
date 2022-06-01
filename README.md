@@ -1,10 +1,10 @@
 # onedrive-api
 
-> ## Under construction...
->
-> ## This library is not fully tested, do not use it at present!
-
 another onedrive api for both node.js/deno and browser
+
+## documentation
+
+see <https://yieldray.github.io/onedrive-api/classes/main.default.html>
 
 ```ts
 const api = new OnedriveAPI(accessToken);

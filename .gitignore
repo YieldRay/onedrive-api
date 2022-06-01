@@ -3,5 +3,4 @@ dist/
 lib/
 doc/
 docs/
-package-lock.json
 .env
