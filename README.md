@@ -9,14 +9,29 @@ see <https://yieldray.github.io/onedrive-api/classes/main.default.html>
 ```ts
 const api = new OnedriveAPI(accessToken);
 
-type ItemLocator = string | { path: string } | { id: string };
+// type ItemLocator = string | { path: string } | { id: string };
 api.item("/root:/Documents/MyFile.xlsx:");
-api.item("/items/0123456789AB");
 api.item({ path: "Documents/MyFile.xlsx" });
+api.item("/items/0123456789AB");
 api.item({ id: "0123456789AB" });
 
-api.children({ path: "/" }); // for root folder
+// methods
+api.children({ path: "/" }).then(console.log);
+api.item({ path: "path/to/file" }).then(console.log);
+api.search({ path: "parent/to/search" }, "search text").then(console.log);
+api.download({ path: "path/to/file" }).then(console.log); // get download url
+api.mkdir({ path: "path/to/parent" }, "new folder name").then(console.log);
+api.copy({ path: "文档/OneDrive 入门.pdf" }, { path: "附件" }).then(async (monitorUrl) => {
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // wait a moment
+    od.monitorCopy(monitorUrl).then(console.log);
+});
+api.uploadSimple({ path: "parent/folder/" }, "/path/to/local/file", "upload file name").then(console.log);
+api.rename({ path: "path/to/file" }, "new file name").then(console.log);
+api.move({ path: "path/to/file" }, { path: "new/parent/" }).then(console.log);
+api.delete({ path: "path/to/file" }).then(console.log);
+// for more, see the doc
 
+// advance
 api.setDrive("me");
 api.setDrive("drives", "AB0987654321");
 api.setDrive("groups", "AB0987654321");

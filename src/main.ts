@@ -1,5 +1,5 @@
 import fetch from "cross-fetch";
-import { fetchData, fetchURL, fetchJSON, fetchOK } from "./fetch.js";
+import { fetchURL, fetchJSON, fetchOK } from "./fetch.js";
 import { CONFIG, FETCH_DETAIL } from "./fetch.js";
 import { simpleOData, ODataAppendix } from "./helper.js";
 import { locatorWrap, pathWrapper, ItemLocator } from "./helper.js";
@@ -18,6 +18,7 @@ class OnedriveAPI {
         return fetch(input, {
             ...info,
             headers: {
+                ...info?.headers,
                 Authorization: `Bearer ${CONFIG.accessToken}`,
             },
         });
@@ -43,7 +44,7 @@ class OnedriveAPI {
      * @param type
      * @param id
      */
-    setDrive(type: "me" | "drives" | "groups" | "sites" | "users" | "approot", id?: string) {
+    setDrive(type: "me" | "drives" | "groups" | "sites" | "users" | "approot", id?: string): this {
         if (!type || !["me", "drives", "groups", "sites", "users", "approot"].includes(type)) throw new Error("type must be one of me, drive, drives, groups, sites, users, approot");
 
         switch (type) {
@@ -58,21 +59,24 @@ class OnedriveAPI {
                 if (type === "drives") CONFIG.drive = `/drives/${id}`;
                 else CONFIG.drive = `/${type}/${id}/drives`;
         }
+        return this;
     }
 
     /**
      * set the max duration of fetch, default is unlimited
      * @param maxDuration (unit is milliseconds) if pass 0 or negative number, no timeout will be set
      */
-    setMaxDuration(maxDuration: number) {
+    setMaxDuration(maxDuration: number): this {
         CONFIG.maxDuration = maxDuration;
+        return this;
     }
 
     /**
      * @param accessToken set accessToken if you want to use another token
      */
-    setAccessToken(accessToken: string) {
+    setAccessToken(accessToken: string): this {
         CONFIG.accessToken = accessToken;
+        return this;
     }
 
     /**
@@ -109,6 +113,9 @@ class OnedriveAPI {
         });
     }
 
+    /**
+     * @param monitorUrl the url returned by copy()
+     */
     async monitorCopy(
         monitorUrl: string
     ): Promise<{ resourceId?: string; operation: string; status: "completed" | "inProgress" | "failed" | "notStarted"; percentageComplete?: number; errorCode?: string; statusDescription: string }> {
@@ -348,7 +355,7 @@ class OnedriveAPI {
                 // for node.js
                 if (typeof file !== "string") throw new Error("file should be a string");
                 const { createReadStream, existsSync } = await import("node:fs");
-                if (!existsSync(file)) throw new Error("file does not exist");
+                if (!existsSync(file)) throw new Error("file does not exist, please check: " + file);
                 const { basename } = await import("node:path");
                 fileName = filename || basename(file);
 
@@ -358,7 +365,7 @@ class OnedriveAPI {
             if (typeof locator === "string") query = locator;
             else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
             else if ("path" in locator) {
-                if (!locator.path.endsWith("/")) throw new Error("A parent folder path must end with '/'");
+                if (!locator.path.endsWith("/")) throw new Error("A parent folder path must end with '/'"); // force use "/" to avoid mistakes
                 query = `/root:/${locator.path}${fileName}:/content`;
             } else throw new Error("locator must be a string or an ItemLocator");
 
