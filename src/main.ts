@@ -126,17 +126,17 @@ class OnedriveAPI {
      * Create a new folder or DriveItem in a Drive with a specified parent item or path.
      * @param parentLocator the parent id or path of the new folder
      * @param name the name of the new folder
-     * @param renameIfExist if true, the folder will be renamed if the name already exists, otherwise it will throw an error
+     * @param conflictBehavior set "rename" | "fail" | "replace"
      * @example createFolder({ path: "path/to/folder" }, "New Folder", true);
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_post_children
      */
-    async mkdir(parentLocator: ItemLocator, name: string, renameIfExist = false): Promise<SingleRemoteItem> {
+    async mkdir(parentLocator: ItemLocator, name: string, conflictBehavior?: "rename" | "fail" | "replace"): Promise<SingleRemoteItem> {
         return fetchJSON([locatorWrap(parentLocator), "/children"], {
             method: "POST",
             body: JSON.stringify({
                 name,
                 folder: {},
-                "@microsoft.graph.conflictBehavior": renameIfExist ? "rename" : undefined,
+                "@microsoft.graph.conflictBehavior": conflictBehavior,
             }),
         });
     }
@@ -197,12 +197,12 @@ class OnedriveAPI {
      * This is a special case of the Update method. Your app can combine moving an item to a new container and updating other properties of the item into a single request.
      * Items cannot be moved between Drives using this request.
      * @param parentLocator like parentReference, but is {path: "/path/to/file"} or {id: "id"}, string is not allowed
-     * @param newItemName optional, new name for the item, has the same effect as rename
+     * @param name optional, new name for the item, has the same effect as rename
      * @example move({ path: "path/to/file" }, { path: "path/to/folder" });
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_move
      */
-    async move(itemLocator: ItemLocator, parentLocator?: Exclude<ItemLocator, string>, newItemName?: string): Promise<SingleRemoteItem> {
-        if (!parentLocator && !newItemName) throw new Error("parentLocator or newItemName must be specified");
+    async move(itemLocator: ItemLocator, parentLocator?: Exclude<ItemLocator, string>, name?: string): Promise<SingleRemoteItem> {
+        if (!parentLocator && !name) throw new Error("parentLocator or newItemName must be specified");
 
         const id = parentLocator && "id" in parentLocator ? parentLocator.id : undefined;
         const path = parentLocator && "path" in parentLocator ? parentLocator.path : undefined;
@@ -215,7 +215,7 @@ class OnedriveAPI {
                     id,
                     path: path ? "/drive" + pathWrapper(path) : undefined,
                 },
-                name: newItemName,
+                name,
             }),
         });
     }
@@ -303,15 +303,17 @@ class OnedriveAPI {
 
     /**
      * Upload the contents of a DriveItem (less than 4MB)
-     * @param parentLocator pass an parentLocator for replacing the old file, e.g. {path:"/path/to/folder/"} where the path must end with a "/"
+     * @param parentLocator pass an parentLocator for upload a new file, e.g. {path:"/path/to/folder"}
      * @param file if pass a `File` object assuming you are running in a browser or deno, you need to construct the File object yourself  (OR)  if pass a `string`, it should be the file path, only supported in node.js
      * @param filename pass "" if you want to use the file name of the file
+     * @example uploadSimple({path:"/path/to/folder"}, "./filename.txt", ""); // node.js, auto detect file name
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_put_content
      */
     async uploadSimple(parentLocator: ItemLocator, file: File | string, filename: string): Promise<SingleRemoteItem>;
     /**
      * Replace the contents of a DriveItem (less than 4MB)
      * @param itemLocator pass an itemLocator for replacing the old file
+     * @example uploadSimple({path:"/path/to/file"}, "./filename.txt"); // node.js
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_put_content
      */
     async uploadSimple(itemLocator: ItemLocator, file: File | string): Promise<SingleRemoteItem>;
@@ -346,7 +348,6 @@ class OnedriveAPI {
                 if (typeof locator === "string") query = locator;
                 else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
                 else if ("path" in locator) {
-                    if (!locator.path.endsWith("/")) throw new Error("A parent folder path must end with '/'");
                     query = `/root:/${locator.path}${fileName}:/content`;
                 } else throw new Error("locator must be a string or an ItemLocator");
 
@@ -365,9 +366,8 @@ class OnedriveAPI {
             if (typeof locator === "string") query = locator;
             else if ("id" in locator) query = `/items/${locator.id}:/${fileName}:/content`;
             else if ("path" in locator) {
-                if (!locator.path.endsWith("/")) throw new Error("A parent folder path must end with '/'"); // force use "/" to avoid mistakes
                 query = `/root:/${locator.path}${fileName}:/content`;
-            } else throw new Error("locator must be a string or an ItemLocator");
+            } else throw new Error("locator must be a string or {path} or {id}");
 
             return fetchJSON(query, {
                 method: "PUT",
@@ -377,14 +377,21 @@ class OnedriveAPI {
     }
 
     /**
-     * This only returns `{uploadUrl, expirationDateTime}`, where the `uploadUrl` need not authorization, use `upload-node.ts` to upload the file
+     * This only returns `{uploadUrl, expirationDateTime}`, where the `uploadUrl` need not authorization, use `upload-node.ts` to upload the file (unavailable at present)
      * @see https://docs.microsoft.com/onedrive/developer/rest-api/api/driveitem_createuploadsession
      */
-    async uploadSession(itemLocator: ItemLocator): Promise<{
+    async uploadSession(
+        itemLocator: ItemLocator,
+        item?: { "@microsoft.graph.conflictBehavior": "rename" | "fail" | "replace"; description: string; name: string }
+    ): Promise<{
         uploadUrl: string;
         expirationDateTime: string;
+        nextExpectedRanges?: string[];
     }> {
-        return fetchJSON([locatorWrap(itemLocator)]);
+        return fetchJSON([locatorWrap(itemLocator), "/createUploadSession"], {
+            method: "POST",
+            body: item ? JSON.stringify(item) : undefined,
+        });
     }
 
     /**

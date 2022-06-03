@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import OnedriveAPI from "./dist/main.js";
 import fetch from "cross-fetch";
+import uploadNode from "./dist/upload-node.js";
 
 const { refresh_token } = await fs.readFile(".env", "utf8").then(JSON.parse);
 function refresh(refreshToken) {
@@ -15,7 +16,7 @@ function refresh(refreshToken) {
 const { access_token } = await fs.readFile(".env", "utf8").then(JSON.parse);
 
 const od = new OnedriveAPI(access_token);
-od.setMaxDuration(5 * 1000);
+od.setMaxDuration(10 * 1000);
 // od.drive().then(console.log);
 // od.children({ path: "/" }).then(console.log);
 // od.item({ path: "文档/OneDrive 入门.pdf" }).then(console.log);
@@ -33,3 +34,7 @@ od.setMaxDuration(5 * 1000);
 // od.rename({ path: "附件/test.js" }, "tested.js").then(console.log);
 // od.move({ path: "附件/tested.js" }, { path: "/" }).then(console.log);
 // od.delete({ path: "附件/tested.js" }).then(console.log);
+od.uploadSession({ path: "附件/test" }).then(({ uploadUrl, expirationDateTime }) => {
+    console.log(uploadUrl, expirationDateTime);
+    uploadNode(uploadUrl, "./test.js").then(console.log); // !BUG
+});
